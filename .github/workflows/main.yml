@@ -38,10 +38,12 @@ jobs:
           node-version: 16
       - name: Setup pnpm
         uses: pnpm/action-setup@v2.2.4
+        with:
+          version: 7.17.0
       - name: install
         run:  pnpm i
       - name: Build
-        run:  npm run build
+        run:  pnpm build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
