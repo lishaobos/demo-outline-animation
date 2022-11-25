@@ -258,8 +258,8 @@ class ActiveImg extends HTMLElement {
       const { img } = this
       img.src = url
       img.onload = () => {
-        this.width ??= img.width + ''
-        this.height ??= img.height + ''
+        this.width = img.width + ''
+        this.height = img.height + ''
         resolve(img)
       }
       img.onerror = e => reject
