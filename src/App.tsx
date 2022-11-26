@@ -28,6 +28,7 @@ function App() {
     <div className="App">
       <button onClick={changeUrl}>选择图片</button>
       <br />
+      {/* @ts-ignore */}
       <active-img-draw url={ url } width='800' />
     </div>
   )
