@@ -1,5 +1,5 @@
-import type { Point, Line, Lines, PointMap } from './line.type'
-import { Directions } from './line.type'
+import type { Point, Line, Lines, PointMap } from './type'
+import { Directions } from './type'
 import { CannyJS } from './canny'
 
 const directions = [
@@ -13,9 +13,7 @@ const directions = [
   Directions.BottomLeft,
 ]
 
-const compose = (...fncs: Function[]) => (...args: any[]) => fncs.reduce((p, n, i) => i ? n(p) : n(...p), args)
-
-const transformArgsFuc = (fnc: Function) => (args: []) => fnc(...args)
+const compose = (...fncs: ((...args: any) => any)[]) => (...args: any[]) => fncs.reduce((p, n, i) => i ? n(p) : n(...p), args)
 
 const getPointByDirection = ([x, y]: Point, dirction: Directions): Point => {
   switch (dirction) {
@@ -38,12 +36,10 @@ const getPointByDirection = ([x, y]: Point, dirction: Directions): Point => {
   }
 }
 
-const getPoints = (imgData: ImageData['data'], w: number, h: number): PointMap => {
+const getPoints = (imgData: number[], w: number, h: number): PointMap => {
   const pointMap: PointMap = new Map()
-  for (let y = h-1; y >= 0; y--) {
-    for (let x = w-1; x >= 0; x--) {
-  // for (let y = 0; y < h; y++) {
-  //   for (let x = 0; x < w; x++) {
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
       const i = x * 4 + y * w * 4
 
       if (imgData[i] === 255) pointMap.set(`${x}-${y}`, [x, y])
@@ -59,7 +55,7 @@ const getLines = (pointMap: PointMap) => {
   const { random } = Math
   for (const [x, y] of pointMap.values()) {
     if (pointCache.has(`${x}-${y}`)) continue
-  
+
 
     directions.sort(() => random() - random())
     const line: Line = []
@@ -73,7 +69,7 @@ const getLines = (pointMap: PointMap) => {
         i++
         continue
       }
-      
+
       i = 0
       line.push(start = [x, y])
       pointCache.set(`${x}-${y}`, true)
@@ -83,19 +79,12 @@ const getLines = (pointMap: PointMap) => {
   return lines
 }
 
-const getCanvasData = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
-  const { data } = ctx.getImageData(0, 0, w, h)
-
-  return [data, w, h]
-}
-
-const getCanvasLines: (ctx: CanvasRenderingContext2D, w: number, h: number) => Lines = compose(
-  getCanvasData,
-  transformArgsFuc(getPoints),
+const getCanvasLines: (imgData: number[], w: number, h: number) => Lines = compose(
+  getPoints,
   getLines
 )
 
-class ActiveImg extends HTMLElement {
+class Draw extends HTMLElement {
   initial = false
   url: string | null = null
   width: string | null | undefined
@@ -107,6 +96,39 @@ class ActiveImg extends HTMLElement {
   shadowRoot: ShadowRoot
   styleNode: HTMLStyleElement
   wrapper: HTMLElement
+  defaultStyle = `
+  .wrapper {
+    position: relative;
+  }
+  img {
+    position: absolute;
+    opacity: 0;
+    z-index: 1;
+    /*animation-start*/
+    animation: img 1s ease var(--time) var(--state) forwards;
+    /*animation-end*/
+  }
+  svg {
+    position: absolute;
+  }
+  svg polyline {
+    stroke-dasharray: var(--offset);
+    stroke-dashoffset: var(--offset);
+    /*animation-start*/
+    animation: line var(--time);
+    /*animation-end*/
+  }
+  @keyframes line {
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+  @keyframes img {
+    100% {
+      opacity: 1
+    }
+  }
+  `
 
   constructor() {
     super()
@@ -122,37 +144,9 @@ class ActiveImg extends HTMLElement {
     this.wrapper.style.setProperty('--state', 'paused')
     this.styleNode = document.createElement('style')
     this.styleNode.setAttribute('type', 'text/css')
-    this.styleNode.innerHTML = `
-    .wrapper {
-      position: relative;
-    }
-    img {
-      position: absolute;
-      opacity: 0;
-      z-index: 1;
-      animation: img 1s ease var(--time) var(--state) forwards;
-    }
-    svg {
-      position: absolute;
-    }
-    svg polyline {
-      stroke-dasharray: var(--offset);
-      stroke-dashoffset: var(--offset);
-      animation: line var(--time);
-    }
-    @keyframes line {
-      100% {
-        stroke-dashoffset: 0;
-      }
-    }
-    @keyframes img {
-      100% {
-        opacity: 1
-      }
-    }
-    `
+    this.styleNode.innerHTML = this.defaultStyle
   }
-  
+
   async connectedCallback() {
     this.initial = true
     this.url = this.getAttribute('url')
@@ -165,9 +159,9 @@ class ActiveImg extends HTMLElement {
     this.shadowRoot.appendChild(this.styleNode)
     this.wrapper.appendChild(this.img)
     this.shadowRoot.appendChild(this.wrapper)
-    await this.start()
     this.wrapper.appendChild(this.svg)
     this.wrapper.style.setProperty('--state', 'running')
+    await this.start()
   }
 
   static get observedAttributes() {
@@ -179,70 +173,23 @@ class ActiveImg extends HTMLElement {
 
     if (!this.initial) return
     this.svg.innerHTML = ''
-    this.styleNode.innerHTML = `
-    .wrapper {
-      position: relative;
-    }
-    img {
-      position: absolute;
-      opacity: 0;
-      z-index: 1;
-    }
-    svg {
-      position: absolute;
-    }
-    svg polyline {
-      stroke-dasharray: var(--offset);
-      stroke-dashoffset: var(--offset);
-    }`
+    this.styleNode.innerHTML = this.defaultStyle.replace(/(\/\*animation-start\*\/)[^/]*(\/\*animation-end\*\/)/g, '')
     this.wrapper.style.setProperty('--state', 'paused')
     this.wrapper.style.setProperty('--state', 'running')
     await new Promise(r => setTimeout(r))
     await this.start()
     setTimeout(() => {
-    this.styleNode.innerHTML = `
-    .wrapper {
-      position: relative;
-    }
-    img {
-      position: absolute;
-      opacity: 0;
-      z-index: 1;
-      animation: img 1s ease var(--time) var(--state) forwards;
-    }
-    svg {
-      position: absolute;
-    }
-    svg polyline {
-      stroke-dasharray: var(--offset);
-      stroke-dashoffset: var(--offset);
-      animation: line var(--time);
-    }
-    @keyframes line {
-      100% {
-        stroke-dashoffset: 0;
-      }
-    }
-    @keyframes img {
-      100% {
-        opacity: 1
-      }
-    }
-    `
-  })
+      this.styleNode.innerHTML = this.defaultStyle
+    })
   }
-  
-  async start() {
-    this.ctx.clearRect(0, 0, +this.width!, +this.height!)
-    const img = await this.loadImg(this.url!)
-    this.width && this.canvas.setAttribute('width', this.width)
-    this.height && this.canvas.setAttribute('height', this.height)
-    this.ctx.drawImage(img, 0, 0, +this.width!, +this.height!)
-    const canny = CannyJS.canny(this.canvas, 80, 10, 1.4, 3);
-    this.ctx.clearRect(0, 0, +this.width!, +this.height!)
-    canny.drawOn(this.canvas);
 
-    const data = getCanvasLines(this.ctx, +this.width!, +this.height!)
+  async start() {
+    const img = await this.loadImg(this.url!)
+    this.canvas.setAttribute('width', this.width!)
+    this.canvas.setAttribute('height', this.height!)
+    this.ctx.drawImage(img, 0, 0, +this.width!, +this.height!)
+    const canny = CannyJS.canny(this.canvas, 80, 10, 1.4, 3)
+    const data = getCanvasLines(canny.toImageDataArray(), +this.width!, +this.height!)
     this.svg.setAttribute('viewBox', `0,0 ${this.width} ${this.height}`)
     this.svg.setAttribute('width', this.width!)
     this.svg.setAttribute('height', this.height!)
@@ -262,9 +209,9 @@ class ActiveImg extends HTMLElement {
         this.height = img.height + ''
         resolve(img)
       }
-      img.onerror = e => reject
+      img.onerror = reject
     })
   }
 }
 
-customElements.define('active-img', ActiveImg)
+customElements.define('active-img-draw', Draw)
